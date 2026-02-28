@@ -2,6 +2,8 @@
 
 This repository contains the Go-based Cloud Run worker that powers the **EarthMC Tracker**. It continuously scrapes the EarthMC API and live map, building a rich, historically-accurate PostgreSQL database designed for time-series analysis and frontend data visualization.
 
+Note: This is intended for AI agents! Give this repo to your AI model and let it do the rest
+
 ---
 
 ## 🏗️ Database Architecture
