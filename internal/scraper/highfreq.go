@@ -16,10 +16,11 @@ import (
 
 // HighFreq scrapes online player status and map coordinates every interval.
 type HighFreq struct {
-	client   *api.Client
-	pool     *pgxpool.Pool
-	interval time.Duration
-	running  sync.Mutex
+	client             *api.Client
+	pool               *pgxpool.Pool
+	interval           time.Duration
+	running            sync.Mutex
+	lastPartitionCheck time.Time
 }
 
 // activityRow represents a single player activity record.
@@ -40,6 +41,21 @@ func NewHighFreq(client *api.Client, pool *pgxpool.Pool, interval time.Duration)
 		pool:     pool,
 		interval: interval,
 	}
+}
+
+// ensurePartitions calls the DB function to create upcoming hourly partitions.
+// Only runs once every 30 minutes to avoid unnecessary overhead.
+func (h *HighFreq) ensurePartitions(ctx context.Context) {
+	if time.Since(h.lastPartitionCheck) < 30*time.Minute {
+		return
+	}
+	_, err := h.pool.Exec(ctx, "SELECT create_activity_partitions(NOW(), 48)")
+	if err != nil {
+		slog.Error("failed to create partitions", "error", err)
+		return
+	}
+	h.lastPartitionCheck = time.Now()
+	slog.Info("ensured hourly partitions exist for next 48 hours")
 }
 
 // Run starts the high-frequency scrape loop. Blocks until context is cancelled.
@@ -69,6 +85,9 @@ func (h *HighFreq) tick(ctx context.Context) {
 		return
 	}
 	defer h.running.Unlock()
+
+	// Ensure hourly partitions exist ahead of current time
+	h.ensurePartitions(ctx)
 
 	start := time.Now()
 	snapshotTS := start

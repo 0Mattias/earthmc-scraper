@@ -31,7 +31,8 @@ CREATE INDEX IF NOT EXISTS idx_nations_name ON nations(name);
 
 -- ============================================================
 -- High-frequency: Player Activity (every 3s)
--- Partitioned by month on snapshot_ts
+-- Partitioned hourly by snapshot_ts with timestamp-named partitions
+-- e.g. player_activity_20260228_150000 covers 15:00:00-15:59:59
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS player_activity (
@@ -49,27 +50,32 @@ CREATE TABLE IF NOT EXISTS player_activity (
     PRIMARY KEY (id, snapshot_ts)
 ) PARTITION BY RANGE (snapshot_ts);
 
--- Create partitions for the next 12 months
-DO $$
+-- Function to auto-create hourly partitions with timestamp names
+-- Call this before inserts to ensure the target partition exists
+CREATE OR REPLACE FUNCTION create_activity_partitions(target_ts TIMESTAMPTZ, ahead_hours INT DEFAULT 24)
+RETURNS VOID AS $$
 DECLARE
-    start_date DATE := DATE_TRUNC('month', CURRENT_DATE);
-    end_date DATE;
+    start_hour TIMESTAMPTZ;
+    end_hour TIMESTAMPTZ;
     partition_name TEXT;
 BEGIN
-    FOR i IN 0..11 LOOP
-        end_date := start_date + INTERVAL '1 month';
-        partition_name := 'player_activity_' || TO_CHAR(start_date, 'YYYY_MM');
-        
+    FOR i IN 0..ahead_hours LOOP
+        start_hour := DATE_TRUNC('hour', target_ts) + (i * INTERVAL '1 hour');
+        end_hour := start_hour + INTERVAL '1 hour';
+        partition_name := 'player_activity_' || TO_CHAR(start_hour, 'YYYYMMDD_HH24MISS');
+
         IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = partition_name) THEN
             EXECUTE FORMAT(
                 'CREATE TABLE %I PARTITION OF player_activity FOR VALUES FROM (%L) TO (%L)',
-                partition_name, start_date, end_date
+                partition_name, start_hour, end_hour
             );
         END IF;
-        
-        start_date := end_date;
     END LOOP;
-END $$;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create initial partitions: current hour + next 48 hours
+SELECT create_activity_partitions(NOW(), 48);
 
 -- BRIN index for fast range scans on the partitioned table
 CREATE INDEX IF NOT EXISTS idx_player_activity_ts_brin ON player_activity USING BRIN (snapshot_ts);
