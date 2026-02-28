@@ -1,0 +1,22 @@
+# EarthMC Scraper
+
+# Binaries
+/earthmc-scraper
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+
+# Reference docs (not needed in repo)
+earthmcapi.txt
+earthmcmapofficial/
