@@ -77,17 +77,18 @@ $$ LANGUAGE plpgsql;
 -- Create initial partitions: current hour + next 30 days
 SELECT create_activity_partitions(NOW(), 720);
 
--- Enable pg_cron to ensure partitions are always created automatically in the background
-CREATE EXTENSION IF NOT EXISTS pg_cron;
+-- Attempt to enable pg_cron if permissions allow
+-- (Cloud SQL restricts this for non-superusers, so we catch the exception and ignore)
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-        -- Fallback if pg_cron cannot be created (permissions)
-        RETURN;
-    END IF;
+    CREATE EXTENSION IF NOT EXISTS pg_cron;
+    
     IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'create_activity_partitions_job') THEN
         PERFORM cron.schedule('create_activity_partitions_job', '0 0 * * *', 'SELECT create_activity_partitions(NOW(), 720);');
     END IF;
+EXCEPTION
+    WHEN insufficient_privilege THEN
+        RAISE NOTICE 'Skipping pg_cron setup due to insufficient privileges. Scraper will manage partitions automatically.';
 END $$;
 
 -- BRIN index for fast range scans on the partitioned table
