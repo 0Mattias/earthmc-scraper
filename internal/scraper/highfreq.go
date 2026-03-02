@@ -49,13 +49,13 @@ func (h *HighFreq) ensurePartitions(ctx context.Context) {
 	if time.Since(h.lastPartitionCheck) < 30*time.Minute {
 		return
 	}
-	_, err := h.pool.Exec(ctx, "SELECT create_activity_partitions(NOW(), 48)")
+	_, err := h.pool.Exec(ctx, "SELECT create_activity_partitions(NOW(), 720)")
 	if err != nil {
 		slog.Error("failed to create partitions", "error", err)
 		return
 	}
 	h.lastPartitionCheck = time.Now()
-	slog.Info("ensured hourly partitions exist for next 48 hours")
+	slog.Info("ensured hourly partitions exist for next 30 days")
 }
 
 // Run starts the high-frequency scrape loop. Blocks until context is cancelled.

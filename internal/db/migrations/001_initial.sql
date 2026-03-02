@@ -74,8 +74,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create initial partitions: current hour + next 48 hours
-SELECT create_activity_partitions(NOW(), 48);
+-- Create initial partitions: current hour + next 30 days
+SELECT create_activity_partitions(NOW(), 720);
+
+-- Enable pg_cron to ensure partitions are always created automatically in the background
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+        -- Fallback if pg_cron cannot be created (permissions)
+        RETURN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'create_activity_partitions_job') THEN
+        PERFORM cron.schedule('create_activity_partitions_job', '0 0 * * *', 'SELECT create_activity_partitions(NOW(), 720);');
+    END IF;
+END $$;
 
 -- BRIN index for fast range scans on the partitioned table
 CREATE INDEX IF NOT EXISTS idx_player_activity_ts_brin ON player_activity USING BRIN (snapshot_ts);
@@ -154,3 +167,4 @@ CREATE TABLE IF NOT EXISTS nation_snapshots (
 CREATE INDEX IF NOT EXISTS idx_nation_snapshots_ts ON nation_snapshots (snapshot_ts);
 CREATE INDEX IF NOT EXISTS idx_nation_snapshots_nation ON nation_snapshots (nation_uuid, snapshot_ts);
 CREATE INDEX IF NOT EXISTS idx_nation_snapshots_data ON nation_snapshots USING GIN (data);
+
