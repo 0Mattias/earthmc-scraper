@@ -81,14 +81,18 @@ SELECT create_activity_partitions(NOW(), 720);
 -- (Cloud SQL restricts this for non-superusers, so we catch the exception and ignore)
 DO $$
 BEGIN
-    CREATE EXTENSION IF NOT EXISTS pg_cron;
-    
-    IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'create_activity_partitions_job') THEN
-        PERFORM cron.schedule('create_activity_partitions_job', '0 0 * * *', 'SELECT create_activity_partitions(NOW(), 720);');
+    -- Try to create the extension (this might fail)
+    EXECUTE 'CREATE EXTENSION IF NOT EXISTS pg_cron';
+
+    -- Check if the extension was successfully loaded before trying to use it
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+        IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'create_activity_partitions_job') THEN
+            PERFORM cron.schedule('create_activity_partitions_job', '0 0 * * *', 'SELECT create_activity_partitions(NOW(), 720);');
+        END IF;
     END IF;
 EXCEPTION
-    WHEN insufficient_privilege THEN
-        RAISE NOTICE 'Skipping pg_cron setup due to insufficient privileges. Scraper will manage partitions automatically.';
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Skipping pg_cron setup due to environment restrictions. Scraper will manage partitions automatically.';
 END $$;
 
 -- BRIN index for fast range scans on the partitioned table
